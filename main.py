@@ -20,8 +20,15 @@ st.set_page_config(
 # Gemini API Client
 class GeminiClient:
     def __init__(self):
-        # You can set your API key as an environment variable or directly here
-        self.api_key = os.environ.get("GEMINI_API_KEY", "your-gemini-api-key-here")
+        # Get API key from Streamlit secrets or environment variable
+        try:
+            self.api_key = st.secrets["api_keys"]["GEMINI_API_KEY"]
+        except (KeyError, FileNotFoundError):
+            self.api_key = os.environ.get("GEMINI_API_KEY")
+            
+        if not self.api_key or self.api_key == "your-actual-gemini-api-key-here":
+            st.warning("⚠️ Gemini API key not configured. Using fallback data.")
+            self.api_key = None
     
     def analyze_student_profile(self, profile: 'StudentProfile') -> str:
         """Analyze student profile and provide insights"""
@@ -43,13 +50,15 @@ class GeminiClient:
             if not profile.career_goals:
                 recommendations.append("Define clearer career goals and aspirations")
             
+            completion_percentage = profile.get_completion_percentage()
+            
             analysis = f"""
             **Profile Analysis for {profile.name or 'Student'}**
             
             **Strengths:**
             {chr(10).join('• ' + s for s in strengths) if strengths else '• Complete your profile to see personalized strengths'}
             
-            **Career Readiness:** {'High' if completion_percentage := profile.get_completion_percentage() > 70 else 'Developing'}
+            **Career Readiness:** {'High' if completion_percentage > 70 else 'Developing'}
             
             **Key Recommendations:**
             {chr(10).join('• ' + r for r in recommendations) if recommendations else '• Continue building your skills and exploring career options'}
