@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
-import plotly.express as px
-import plotly.graph_objects as go
+import altair as alt
 from datetime import datetime, timedelta
 import json
 import hashlib
@@ -561,9 +560,16 @@ def render_dashboard():
                 'Level': ['Intermediate'] * len(profile.current_skills)
             })
             
-            fig = px.bar(skills_data, x='Skill', y='Level', 
-                        title="Current Skills Overview")
-            st.plotly_chart(fig, use_container_width=True)
+            chart = alt.Chart(skills_data).mark_bar().encode(
+                x='Skill:N',
+                y=alt.value(50),  # Fixed height for all bars
+                color=alt.value('steelblue')
+            ).properties(
+                title="Current Skills Overview",
+                width=600,
+                height=300
+            )
+            st.altair_chart(chart, use_container_width=True)
         
         # Quick actions
         st.markdown("#### 🚀 Quick Actions")
@@ -925,29 +931,24 @@ def render_career_recommendations():
                     st.write(rec['career_path'])
             
             with col2:
-                # Match score gauge
-                fig = go.Figure(go.Indicator(
-                    mode = "gauge+number",
-                    value = rec.get('match_score', 0),
-                    domain = {'x': [0, 1], 'y': [0, 1]},
-                    title = {'text': "Match Score"},
-                    gauge = {
-                        'axis': {'range': [None, 100]},
-                        'bar': {'color': "darkblue"},
-                        'steps': [
-                            {'range': [0, 50], 'color': "lightgray"},
-                            {'range': [50, 80], 'color': "yellow"},
-                            {'range': [80, 100], 'color': "green"}
-                        ],
-                        'threshold': {
-                            'line': {'color': "red", 'width': 4},
-                            'thickness': 0.75,
-                            'value': 90
-                        }
-                    }
-                ))
-                fig.update_layout(height=200, margin=dict(l=20, r=20, t=40, b=20))
-                st.plotly_chart(fig, use_container_width=True)
+                # Match score display
+                match_score = rec.get('match_score', 0)
+                st.metric(
+                    label="Match Score", 
+                    value=f"{match_score:.0f}%",
+                    delta=f"{'High' if match_score >= 80 else 'Good' if match_score >= 60 else 'Fair'} match"
+                )
+                
+                # Progress bar for match score
+                st.progress(match_score / 100)
+                
+                # Color-coded indicator
+                if match_score >= 80:
+                    st.success("Excellent Match!")
+                elif match_score >= 60:
+                    st.info("Good Match")
+                else:
+                    st.warning("Fair Match")
             
             # Skills and requirements
             col1, col2 = st.columns(2)
@@ -998,29 +999,31 @@ def render_career_recommendations():
         
         with col1:
             if 'category' in summary_df.columns and 'match_score' in summary_df.columns:
-                avg_scores = summary_df.groupby('category')['match_score'].mean().sort_values(ascending=False)
+                avg_scores = summary_df.groupby('category')['match_score'].mean().reset_index()
                 
-                fig = px.bar(
-                    x=avg_scores.values,
-                    y=avg_scores.index,
-                    orientation='h',
+                chart = alt.Chart(avg_scores).mark_bar().encode(
+                    x=alt.X('match_score:Q', title='Average Match Score'),
+                    y=alt.Y('category:N', title='Career Category', sort='-x'),
+                    color=alt.value('steelblue')
+                ).properties(
                     title="Average Match Score by Category",
-                    labels={'x': 'Average Match Score', 'y': 'Career Category'}
+                    width=400,
+                    height=300
                 )
-                fig.update_layout(height=400)
-                st.plotly_chart(fig, use_container_width=True)
+                st.altair_chart(chart, use_container_width=True)
         
         with col2:
             if 'match_score' in summary_df.columns:
-                fig = px.histogram(
-                    summary_df,
-                    x='match_score',
-                    nbins=10,
+                chart = alt.Chart(summary_df).mark_bar().encode(
+                    x=alt.X('match_score:Q', bin=alt.Bin(maxbins=10), title='Match Score'),
+                    y=alt.Y('count():Q', title='Number of Careers'),
+                    color=alt.value('lightblue')
+                ).properties(
                     title="Distribution of Match Scores",
-                    labels={'match_score': 'Match Score', 'count': 'Number of Careers'}
+                    width=400,
+                    height=300
                 )
-                fig.update_layout(height=400)
-                st.plotly_chart(fig, use_container_width=True)
+                st.altair_chart(chart, use_container_width=True)
 
 def render_skills_analysis():
     st.title("📊 Skills Gap Analysis")
@@ -1146,19 +1149,23 @@ def render_skills_analysis():
             if skills_data:
                 df = pd.DataFrame(skills_data)
                 
-                fig = px.bar(
-                    df, 
-                    x="Skill", 
-                    color="Status",
-                    title="Skills Analysis Overview",
-                    color_discrete_map={
-                        "You Have": "green",
-                        "Need to Learn": "red", 
-                        "Additional": "blue"
-                    }
+                # Create color mapping
+                color_scale = alt.Scale(
+                    domain=["You Have", "Need to Learn", "Additional"],
+                    range=["green", "red", "blue"]
                 )
-                fig.update_layout(xaxis_tickangle=-45, height=500)
-                st.plotly_chart(fig, use_container_width=True)
+                
+                chart = alt.Chart(df).mark_bar().encode(
+                    x=alt.X('Skill:N', title='Skills'),
+                    y=alt.value(30),  # Fixed height
+                    color=alt.Color('Status:N', scale=color_scale),
+                    tooltip=['Skill:N', 'Status:N', 'Category:N']
+                ).properties(
+                    title="Skills Analysis Overview",
+                    width=600,
+                    height=400
+                )
+                st.altair_chart(chart, use_container_width=True)
         
         # Detailed gap analysis
         if 'gap_analysis' in analysis:
@@ -1289,15 +1296,17 @@ def render_job_market_insights():
                 sectors_df = pd.DataFrame(growing_sectors)
                 
                 if 'growth_rate' in sectors_df.columns:
-                    fig = px.bar(
-                        sectors_df,
-                        x='sector',
-                        y='growth_rate',
+                    chart = alt.Chart(sectors_df).mark_bar().encode(
+                        x=alt.X('growth_rate:Q', title='Growth Rate (%)'),
+                        y=alt.Y('sector:N', title='Sector', sort='-x'),
+                        color=alt.value('lightgreen'),
+                        tooltip=['sector:N', 'growth_rate:Q', 'description:N']
+                    ).properties(
                         title="Fastest Growing Sectors in India",
-                        labels={'growth_rate': 'Growth Rate (%)', 'sector': 'Sector'}
+                        width=600,
+                        height=400
                     )
-                    fig.update_layout(xaxis_tickangle=-45)
-                    st.plotly_chart(fig, use_container_width=True)
+                    st.altair_chart(chart, use_container_width=True)
             
             st.markdown("#### 🔥 Most In-Demand Skills")
             
@@ -1380,15 +1389,20 @@ def render_job_market_insights():
         
         salary_df = pd.DataFrame(salary_data)
         
-        fig = px.box(
-            salary_df,
-            x='role',
-            y='salary_lpa',
-            title="Salary Distribution by Role",
-            labels={'salary_lpa': 'Salary (LPA)', 'role': 'Job Role'}
+        # Create a simpler bar chart showing average salaries
+        avg_salary = salary_df.groupby('role')['salary_lpa'].mean().reset_index()
+        
+        chart = alt.Chart(avg_salary).mark_bar().encode(
+            x=alt.X('role:N', title='Job Role'),
+            y=alt.Y('salary_lpa:Q', title='Average Salary (LPA)'),
+            color=alt.value('lightcoral'),
+            tooltip=['role:N', 'salary_lpa:Q']
+        ).properties(
+            title="Average Salary by Role",
+            width=600,
+            height=400
         )
-        fig.update_layout(xaxis_tickangle=-45, height=500)
-        st.plotly_chart(fig, use_container_width=True)
+        st.altair_chart(chart, use_container_width=True)
     
     with tab4:
         st.subheader("🏢 Top Employers & Company Insights")
